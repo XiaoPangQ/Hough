@@ -1,0 +1,645 @@
+classdef HoughApp < matlab.apps.AppBase
+
+    % Properties that correspond to app components
+    properties (Access = public)
+        UIFigure       matlab.ui.Figure
+        UIAxes         matlab.ui.control.UIAxes
+        Button         matlab.ui.control.Button
+        Button_2       matlab.ui.control.Button
+        UIAxes_2       matlab.ui.control.UIAxes
+        UIAxes_3       matlab.ui.control.UIAxes
+        Button_4       matlab.ui.control.Button
+        UIAxes_4       matlab.ui.control.UIAxes
+        ButtonGroup    matlab.ui.container.ButtonGroup
+        CannyButton    matlab.ui.control.RadioButton
+        LogButton      matlab.ui.control.RadioButton
+        SobelButton    matlab.ui.control.RadioButton
+        RobertsButton  matlab.ui.control.RadioButton
+        PewittButton   matlab.ui.control.RadioButton
+        KirschButton   matlab.ui.control.RadioButton
+        Button_7       matlab.ui.control.RadioButton
+        Button_9       matlab.ui.control.Button
+        Button_6       matlab.ui.control.Button
+        Button_8       matlab.ui.control.Button
+        Label          matlab.ui.control.Label
+        EditField      matlab.ui.control.NumericEditField
+        Button_10      matlab.ui.control.Button
+        ButtonGroup_2  matlab.ui.container.ButtonGroup
+        Button_11      matlab.ui.control.RadioButton
+        Button_12      matlab.ui.control.RadioButton
+        Button_13      matlab.ui.control.RadioButton
+    end
+
+    
+    properties (Access = private)
+        im; % 输入图像
+        q; % Description
+        G;
+        flag=0;
+        num=0;
+        v;%阈值
+        t;
+        d;
+        ss;
+        zz;
+    end
+    
+    methods (Access = private)
+        
+        function SaveImage(app,n,I)
+            
+            filename = strcat('Img_',num2str(n),'.jpg');	%引入i以实现编号
+            path = strcat('D:\2\Hough直线检测\',filename);
+            imwrite(I,path);
+        end
+        %图片被保存到了D:\2\Hough直线检测\Img_1.jpg
+        
+        
+    end
+    
+
+    methods (Access = private)
+
+        % Button pushed function: Button_2
+        function Close(app, event)
+            choice=questdlg('是否要关闭程序？','关闭程序','是','否','是');
+            switch choice
+                case '是'
+                    delete(app.UIFigure);
+                    return;
+                case '否'
+                    return;
+            end
+        end
+
+        % Button pushed function: Button_4
+        function Button_4Pushed(app, event)
+            if app.flag==0
+                %Canny算子
+                gray_image=rgb2gray(app.im);
+                %gray_image=histeq(gray_image);   %均衡化
+                img = im2double(gray_image);
+                h = fspecial('gaussian', 5, 2); % gaussian平滑模板
+                img = imfilter(img, h);
+                gx = [1 2 1; 0 0 0; -1 -2 -1];
+                gy = [1 0 -1; 2 0 -2; 1 0 -1];
+                Gx = conv2(img, gx, 'same');
+                Gy = conv2(img, gy, 'same');
+                app.G = sqrt(Gx.^2 + Gy.^2);
+                
+            end
+            imshow(app.G,'Parent',app.UIAxes_3);
+            %均值滤波
+            I=app.G;
+            [m,n]=size(I);
+            for i=2:m-1
+                for j=2:n-1
+                    I(i,j)=I(i-1,j-1)+I(i-1,j)+I(i-1,j+1)+I(i,j-1)+I(i,j)+I(i,j+1)+I(i+1,j-1)+I(i+1,j)+I(i+1,j+1);
+                    I(i,j)=I(i,j)/9;
+                    %算子边缘检测后，对结果进行均值滤波以去除噪声，为下一步hough变换提取直线作准备
+                end
+            end
+            %二值化
+            app.q=im2uint8(I);    %把图像数据类型转换为无符号八位整型
+            [m,n]=size(app.q);
+            for i=1:m
+                for j=1:n
+                    if app.q(i,j)>60    % 设置二值化的阈值为60
+                        app.q(i,j)=255; %对图像进行二值化处理，使图像边缘更加突出清晰,% 超过阈值的设为白点
+                    else
+                        app.q(i,j)=0;    %小于阈值的设为黑点
+                    end
+                end
+            end
+            imshow(app.q,'Parent',app.UIAxes_2);
+        end
+
+        % Button pushed function: Button_9
+        function Button_9Pushed(app, event)
+            Q=app.q;
+            [m,n]=size(app.q);
+            %Hough变换检测直线，使用（theta，p）参数空间，theta∈[0,180],p∈[0,2dis]
+            theta=180; %角度的值为0到180度
+            dis=round(sqrt(m^2+n^2)); % 图像对角线长度最大值distance，从而确定p的取值范围为[-distance,distance],round为四舍五入
+            s=zeros(theta,2*dis);   %存储每个（theta,p）个数
+            z=cell(theta,2*dis);     % 用元胞数组存储每个检测点的坐标(i,j)
+            for i=1:m
+                for j=1:n        %遍历图像的所有点
+                    if (Q(i,j)==255)    %只检测边缘的白点
+                        for k=1:theta    % 对每个点从1~180度遍历，取得经过该点的所有直线的p值（产生选民）
+                            p=round(i*cos(pi*k/180)+j*sin(pi*k/180));   % 若p大于0，则将点存储在坐标集合(distance,2*distance)空间（投票存储器），该集合点的极坐标θ∈[0,90]
+                            %对每个点从1到180度遍历
+                            if(p>0)
+                                s(k,dis+p)=s(k,dis+p)+1;   % 符合直线的点(theta,p)数量加1
+                                z{k,dis+p}=[z{k,dis+p},[i,j]'];   % 在点集合中存储该点坐标(i,j)
+                            else
+                                ap=abs(p)+1;                      % 若p小于0，则将点存储在坐标集合(0,distance)空间，该集合点的极坐标θ∈[90，180]
+                                s(k,ap)=s(k,ap)+1;   % 符合直线的点(theta,p)数量加1
+                                z{k,ap}=[z{k,ap},[i,j]'];   % 在点集合中存储该点坐标(i,j)
+                            end
+                        end
+                    end
+                end
+            end
+            app.t=theta; app.d=dis;app.ss=s;app.zz=z;%复制参数，改变边缘特征颜色
+            % 绘制图像边缘
+            for i=1:theta
+                for j=1:dis*2
+                    if(s(i,j)>app.v)        % 提取直线的阈值设为70
+                        lp=z{i,j};        %提取对应点坐标
+                        for k=1:s(i,j)
+                            app.im(lp(1,k),lp(2,k),1)=255;    %描成红色
+                            app.im(lp(1,k),lp(2,k),2)=0;
+                            app.im(lp(1,k),lp(2,k),3)=0;
+                        end
+                    end
+                end
+            end
+            imshow(app.im,'Parent',app.UIAxes_4);
+            msgbox('成功提取边缘特征！','Hough变换检测','warn');
+            
+            
+        end
+
+        % Button pushed function: Button
+        function ChoosePhoto(app, event)
+            [filename,pathname]=uigetfile({'*.jpg';'*.png';'*.tif';'*.*'},'选择图像');
+            if isequal(filename,0) ||isequal(pathname,0)
+                errordlg('没有选中文件','错误');
+            else
+                file=strcat(pathname,filename);
+            end
+            app.im=imread(file);
+            axis(app.UIAxes,'off');
+            imshow(app.im,'Parent',app.UIAxes);
+        end
+
+        % Selection changed function: ButtonGroup
+        function ButtonGroupSelectionChanged(app, event)
+            app.flag=app.flag+1;
+            %灰度图
+            gray_image=rgb2gray(app.im);
+            %gray_image=histeq(gray_image);   %均衡化
+            [m,n]=size(gray_image);
+            T=20;%阈值
+            selectedButton = app.ButtonGroup.SelectedObject;
+            switch selectedButton.Text
+                %Canny算子边缘检测
+                case 'Canny'
+                    img = im2double(gray_image);
+                    h = fspecial('gaussian', 5, 2); % gaussian平滑模板
+                    img = imfilter(img, h);
+                    gx = [1 2 1; 0 0 0; -1 -2 -1];
+                    gy = [1 0 -1; 2 0 -2; 1 0 -1];
+                    Gx = conv2(img, gx, 'same');
+                    Gy = conv2(img, gy, 'same');
+                    app.G = sqrt(Gx.^2 + Gy.^2);
+                    
+                    %Log算子边缘检测
+                case 'Log'
+                    img = im2double(gray_image);
+                    [m,n]=size(img);		% 得到图像大小行m，列n
+                    for i=3:m-2
+                       	for j=3:n-2		% 计算区域从图像(3,3)开始，到(m-2,n-2)结束
+                          		% LoG高斯拉普拉斯算子粗提取图像边缘
+                            app.G(i,j) = -img(i-2,j)-img(i-1,j-1)-2*img(i-1,j)-img(i-1,j+1)-img(i,j+2)-2*img(i,j-1)+16*img(i,j)-2*img(i,j+1)-img(i,j+2)-img(i+1,j-1)-2*img(i+1,j)-img(i+1,j+1)-img(i+2,j);
+                       	end
+                    end
+                    
+                    %Sobel算子边缘检测
+                case 'Sobel'
+                    %matlab自带Sobel算子边缘检测
+                    %sobelBW = edge(gray_image,'sobel',0.06); %可以省去0.06，系统会默认。
+                    %app.G=im2double(sobelBW);
+                    
+                    f=gray_image;
+                    f_s=zeros(m,n);
+                    for i=2:m-1
+                        for j=2:n-1
+                            f_s(i,j)=abs(f(i-1,j-1)+2*f(i,j-1)+f(i+1,j-1)-f(i-1,j+1)-2*f(i,j+1)-f(i+1,j+1))+abs(f(i+1,j-1)+2*f(i+1,j)+f(i+1,j+1)-f(i-1,j-1)-2*f(i-1,j)-f(i-1,j+1));
+                            if f_s(i,j)<T
+                                f_s(i,j)=0;
+                            else
+                                f_s(i,j)=255;
+                            end
+                        end
+                    end
+                    app.G=f_s;
+                    %Roberts算子边缘检测
+                case 'Roberts'
+                    %matlab自带Roberts算子边缘检测
+                    %robertsBW=edge(gray_image,'roberts');
+                    %app.G=im2double(robertsBW);
+                    
+                    f=gray_image;
+                    f_r=zeros(m,n);
+                    for i=2:m-1
+                        for j=2:n-1
+                            f_r(i,j)=abs(f(i+1,j+1)-f(i,j))+abs(f(i,j+1)-f(i+1,j));
+                            if f_r(i,j)<T
+                                f_r(i,j)=0;
+                            else
+                                f_r(i,j)=255;
+                            end
+                        end
+                    end
+                    app.G=f_r;
+                    
+                    %Prewitt算子边缘检测
+                case 'Prewitt'
+                    %matlab自带Prewitt算子边缘检测
+                    %prewittBW=edge(gray_image,'prewitt');
+                    %app.G=im2double(prewittBW);
+                    
+                    f=gray_image;
+                    f_p=zeros(m,n);
+                    for i=2:m-1
+                        for j=2:n-1
+                            f_p(i,j)=abs(f(i-1,j-1)+f(i,j-1)+f(i+1,j-1)-f(i-1,j+1)-f(i,j+1)-f(i+1,j+1))+abs(f(i+1,j-1)+f(i+1,j)+f(i+1,j+1)-f(i-1,j-1)-f(i-1,j)-f(i-1,j+1));
+                            if f_p(i,j)<15
+                                f_p(i,j)=0;
+                            else
+                                f_p(i,j)=255;
+                            end
+                        end
+                    end
+                    app.G=f_p;
+                    
+                    %krisch算子算子边缘检测
+                case 'Kirsch'
+                    
+                    k(:,:,1)=[-3,-3,-3;
+                        -3,0,5;
+                        -3,5,5];
+                    k(:,:,2)=[-3,-3,5;
+                        -3,0,5;
+                        -3,-3,5];
+                    k(:,:,3)=[-3,5,5;
+                        -3,0,5;
+                        -3,-3,-3];
+                    k(:,:,4)=[-3,-3,-3;
+                        -3,0,-3;
+                        5,5,5];
+                    k(:,:,5)=[5,5,5;
+                        -3,0,-3;
+                        -3,-3,-3];
+                    k(:,:,6)=[-3,-3,-3;
+                        5,0,-3;
+                        5,5,-3];
+                    k(:,:,7)=[5,-3,-3;
+                        5,0,-3;
+                        5,-3,-3];
+                    k(:,:,8)=[5,5,-3;
+                        5,0,-3;
+                        -3,-3,-3];
+                    kk=zeros(size(gray_image));
+                    I=double(gray_image);
+                    for i=1:8
+                        f_k(:,:,i)=conv2(I,k(:,:,i),'same');
+                        kk=max(kk,f_k(:,:,i));
+                    end
+                    f_kk=imbinarize(kk,600);
+                    app.G=im2double(f_kk);
+                    
+                case '梯度法'
+                    I=gray_image;
+                    
+                    [x,y]=gradient(double(I));   %获取梯度
+                    td=sqrt(x.^2+y.^2);
+                    I(td>=T)=255;           %梯度提取边缘 画黑
+                    I(td<T)=0;
+                    app.G=im2double(I);
+            end
+        end
+
+        % Button pushed function: Button_6
+        function Button_6Pushed(app, event)
+            
+            app.num=app.num+1;
+            SaveImage(app,app.num,app.im);
+            msgbox('保存成功！','保存图像','warn');
+        end
+
+        % Button pushed function: Button_8
+        function Button_8Pushed(app, event)
+            figure,imshow(app.im),title('Hough边缘特征');
+        end
+
+        % Value changed function: EditField
+        function EditFieldValueChanged(app, event)
+            value = app.EditField.Value;
+            app.v=value;
+        end
+
+        % Button pushed function: Button_10
+        function Button_10Pushed(app, event)
+            figure,imshow(app.G),title('图像边缘特征');
+        end
+
+        % Selection changed function: ButtonGroup_2
+        function ButtonGroup_2SelectionChanged(app, event)
+            selectedButton = app.ButtonGroup_2.SelectedObject;
+            switch selectedButton.Text
+                
+                case '红色'
+                    for i=1:app.t
+                        for j=1:app.d*2
+                            if(app.ss(i,j)>app.v)        % 提取直线的阈值设为70
+                                lp=app.zz{i,j};        %提取对应点坐标
+                                for k=1:app.ss(i,j)
+                                    app.im(lp(1,k),lp(2,k),1)=255;    %描成红色
+                                    app.im(lp(1,k),lp(2,k),2)=0;
+                                    app.im(lp(1,k),lp(2,k),3)=0;
+                                end
+                            end
+                        end
+                    end
+                    imshow(app.im,'Parent',app.UIAxes_4);
+                    
+                case '绿色'
+                    for i=1:app.t
+                        for j=1:app.d*2
+                            if(app.ss(i,j)>app.v)        % 提取直线的阈值设为70
+                                lp=app.zz{i,j};        %提取对应点坐标
+                                for k=1:app.ss(i,j)
+                                    app.im(lp(1,k),lp(2,k),1)=0;    %描成绿色
+                                    app.im(lp(1,k),lp(2,k),2)=255;
+                                    app.im(lp(1,k),lp(2,k),3)=0;
+                                end
+                            end
+                        end
+                    end
+                    imshow(app.im,'Parent',app.UIAxes_4);
+                    
+                case '蓝色'
+                   for i=1:app.t
+                        for j=1:app.d*2
+                            if(app.ss(i,j)>app.v)        % 提取直线的阈值设为70
+                                lp=app.zz{i,j};        %提取对应点坐标
+                                for k=1:app.ss(i,j)
+                                    app.im(lp(1,k),lp(2,k),1)=0;    %描成蓝色
+                                    app.im(lp(1,k),lp(2,k),2)=0;
+                                    app.im(lp(1,k),lp(2,k),3)=255;
+                                end
+                            end
+                        end
+                    end
+                    imshow(app.im,'Parent',app.UIAxes_4); 
+            end
+        end
+    end
+
+    % App initialization and construction
+    methods (Access = private)
+
+        % Create UIFigure and components
+        function createComponents(app)
+
+            % Create UIFigure
+            app.UIFigure = uifigure;
+            app.UIFigure.Color = [0.9804 0.9725 0.9294];
+            app.UIFigure.Position = [400 150 1003 638];
+            app.UIFigure.Name = '霍夫直线检测';
+            setAutoResize(app, app.UIFigure, true)
+
+            % Create UIAxes
+            app.UIAxes = uiaxes(app.UIFigure);
+            title(app.UIAxes, '原图');
+            app.UIAxes.FontName = '黑体';
+            app.UIAxes.FontSize = 16;
+            app.UIAxes.FontWeight = 'bold';
+            app.UIAxes.BackgroundColor = [1 1 1];
+            app.UIAxes.Position = [1 389 417 250];
+
+            % Create Button
+            app.Button = uibutton(app.UIFigure, 'push');
+            app.Button.ButtonPushedFcn = createCallbackFcn(app, @ChoosePhoto, true);
+            app.Button.BackgroundColor = [0 0 1];
+            app.Button.FontName = '黑体';
+            app.Button.FontSize = 16;
+            app.Button.FontWeight = 'bold';
+            app.Button.FontColor = [1 1 1];
+            app.Button.Position = [158 346 103 35];
+            app.Button.Text = '选择图像';
+
+            % Create Button_2
+            app.Button_2 = uibutton(app.UIFigure, 'push');
+            app.Button_2.ButtonPushedFcn = createCallbackFcn(app, @Close, true);
+            app.Button_2.BackgroundColor = [0 0 1];
+            app.Button_2.FontName = '黑体';
+            app.Button_2.FontSize = 16;
+            app.Button_2.FontWeight = 'bold';
+            app.Button_2.FontColor = [1 1 1];
+            app.Button_2.Position = [862 42 103 35];
+            app.Button_2.Text = '退出程序';
+
+            % Create UIAxes_2
+            app.UIAxes_2 = uiaxes(app.UIFigure);
+            title(app.UIAxes_2, '二值化图像');
+            app.UIAxes_2.FontName = '黑体';
+            app.UIAxes_2.FontSize = 16;
+            app.UIAxes_2.FontWeight = 'bold';
+            app.UIAxes_2.BackgroundColor = [1 1 1];
+            app.UIAxes_2.Position = [1 89 417 250];
+
+            % Create UIAxes_3
+            app.UIAxes_3 = uiaxes(app.UIFigure);
+            title(app.UIAxes_3, '边缘特征');
+            app.UIAxes_3.FontName = '黑体';
+            app.UIAxes_3.FontSize = 16;
+            app.UIAxes_3.FontWeight = 'bold';
+            app.UIAxes_3.BackgroundColor = [1 1 1];
+            app.UIAxes_3.Position = [431 389 417 250];
+
+            % Create Button_4
+            app.Button_4 = uibutton(app.UIFigure, 'push');
+            app.Button_4.ButtonPushedFcn = createCallbackFcn(app, @Button_4Pushed, true);
+            app.Button_4.BackgroundColor = [0 0 1];
+            app.Button_4.FontName = '黑体';
+            app.Button_4.FontSize = 16;
+            app.Button_4.FontWeight = 'bold';
+            app.Button_4.FontColor = [1 1 1];
+            app.Button_4.Position = [506 346 103 35];
+            app.Button_4.Text = '边缘检测';
+
+            % Create UIAxes_4
+            app.UIAxes_4 = uiaxes(app.UIFigure);
+            title(app.UIAxes_4, 'Hough变换');
+            app.UIAxes_4.FontName = '黑体';
+            app.UIAxes_4.FontSize = 16;
+            app.UIAxes_4.FontWeight = 'bold';
+            app.UIAxes_4.BackgroundColor = [1 1 1];
+            app.UIAxes_4.Position = [431 89 417 250];
+
+            % Create ButtonGroup
+            app.ButtonGroup = uibuttongroup(app.UIFigure);
+            app.ButtonGroup.SelectionChangedFcn = createCallbackFcn(app, @ButtonGroupSelectionChanged, true);
+            app.ButtonGroup.BorderType = 'none';
+            app.ButtonGroup.TitlePosition = 'centertop';
+            app.ButtonGroup.Title = '选择边缘检测算子';
+            app.ButtonGroup.BackgroundColor = [0.4863 0.8471 0.9216];
+            app.ButtonGroup.FontName = '黑体';
+            app.ButtonGroup.FontWeight = 'bold';
+            app.ButtonGroup.Position = [862 406 125 216];
+
+            % Create CannyButton
+            app.CannyButton = uiradiobutton(app.ButtonGroup);
+            app.CannyButton.Text = 'Canny';
+            app.CannyButton.FontWeight = 'bold';
+            app.CannyButton.Position = [11 170.199951171875 59 15];
+            app.CannyButton.Value = true;
+
+            % Create LogButton
+            app.LogButton = uiradiobutton(app.ButtonGroup);
+            app.LogButton.Text = 'Log';
+            app.LogButton.FontWeight = 'bold';
+            app.LogButton.Position = [11 148.199951171875 43 15];
+
+            % Create SobelButton
+            app.SobelButton = uiradiobutton(app.ButtonGroup);
+            app.SobelButton.Text = 'Sobel';
+            app.SobelButton.FontWeight = 'bold';
+            app.SobelButton.Position = [11 126.199951171875 54 15];
+
+            % Create RobertsButton
+            app.RobertsButton = uiradiobutton(app.ButtonGroup);
+            app.RobertsButton.Text = 'Roberts';
+            app.RobertsButton.FontWeight = 'bold';
+            app.RobertsButton.Position = [11 104.199951171875 68 15];
+
+            % Create PewittButton
+            app.PewittButton = uiradiobutton(app.ButtonGroup);
+            app.PewittButton.Text = 'Pewitt';
+            app.PewittButton.FontWeight = 'bold';
+            app.PewittButton.Position = [11 82.199951171875 57 15];
+
+            % Create KirschButton
+            app.KirschButton = uiradiobutton(app.ButtonGroup);
+            app.KirschButton.Text = 'Kirsch';
+            app.KirschButton.FontWeight = 'bold';
+            app.KirschButton.Position = [11 60.199951171875 60 15];
+
+            % Create Button_7
+            app.Button_7 = uiradiobutton(app.ButtonGroup);
+            app.Button_7.Text = '梯度法';
+            app.Button_7.FontWeight = 'bold';
+            app.Button_7.Position = [11 38.199951171875 61 15];
+
+            % Create Button_9
+            app.Button_9 = uibutton(app.UIFigure, 'push');
+            app.Button_9.ButtonPushedFcn = createCallbackFcn(app, @Button_9Pushed, true);
+            app.Button_9.BackgroundColor = [0 0 1];
+            app.Button_9.FontName = '黑体';
+            app.Button_9.FontSize = 16;
+            app.Button_9.FontWeight = 'bold';
+            app.Button_9.FontColor = [1 1 1];
+            app.Button_9.Position = [223 42 103 35];
+            app.Button_9.Text = '边缘提取';
+
+            % Create Button_6
+            app.Button_6 = uibutton(app.UIFigure, 'push');
+            app.Button_6.ButtonPushedFcn = createCallbackFcn(app, @Button_6Pushed, true);
+            app.Button_6.BackgroundColor = [0 0 1];
+            app.Button_6.FontName = '黑体';
+            app.Button_6.FontSize = 16;
+            app.Button_6.FontWeight = 'bold';
+            app.Button_6.FontColor = [1 1 1];
+            app.Button_6.Position = [506 42 103 35];
+            app.Button_6.Text = '保存图像';
+
+            % Create Button_8
+            app.Button_8 = uibutton(app.UIFigure, 'push');
+            app.Button_8.ButtonPushedFcn = createCallbackFcn(app, @Button_8Pushed, true);
+            app.Button_8.BackgroundColor = [0 0 1];
+            app.Button_8.FontName = '黑体';
+            app.Button_8.FontSize = 16;
+            app.Button_8.FontWeight = 'bold';
+            app.Button_8.FontColor = [1 1 1];
+            app.Button_8.Position = [652 42 103 35];
+            app.Button_8.Text = '查看图像';
+
+            % Create Label
+            app.Label = uilabel(app.UIFigure);
+            app.Label.BackgroundColor = [0 0 1];
+            app.Label.HorizontalAlignment = 'center';
+            app.Label.VerticalAlignment = 'center';
+            app.Label.FontName = '黑体';
+            app.Label.FontSize = 16;
+            app.Label.FontColor = [1 1 1];
+            app.Label.Position = [65.5 42 69 35];
+            app.Label.Text = '提取阈值';
+
+            % Create EditField
+            app.EditField = uieditfield(app.UIFigure, 'numeric');
+            app.EditField.ValueChangedFcn = createCallbackFcn(app, @EditFieldValueChanged, true);
+            app.EditField.Limits = [0 1000000];
+            app.EditField.ValueDisplayFormat = '%.0f';
+            app.EditField.HorizontalAlignment = 'center';
+            app.EditField.Position = [134 42 48 35];
+
+            % Create Button_10
+            app.Button_10 = uibutton(app.UIFigure, 'push');
+            app.Button_10.ButtonPushedFcn = createCallbackFcn(app, @Button_10Pushed, true);
+            app.Button_10.BackgroundColor = [0 0 1];
+            app.Button_10.FontName = '黑体';
+            app.Button_10.FontSize = 16;
+            app.Button_10.FontWeight = 'bold';
+            app.Button_10.FontColor = [1 1 1];
+            app.Button_10.Position = [652 346 103 35];
+            app.Button_10.Text = '查看图像';
+
+            % Create ButtonGroup_2
+            app.ButtonGroup_2 = uibuttongroup(app.UIFigure);
+            app.ButtonGroup_2.SelectionChangedFcn = createCallbackFcn(app, @ButtonGroup_2SelectionChanged, true);
+            app.ButtonGroup_2.TitlePosition = 'centertop';
+            app.ButtonGroup_2.Title = '边缘特征颜色';
+            app.ButtonGroup_2.BackgroundColor = [0.4863 0.8471 0.9216];
+            app.ButtonGroup_2.FontName = '黑体';
+            app.ButtonGroup_2.FontWeight = 'bold';
+            app.ButtonGroup_2.Position = [862 161 125 106];
+
+            % Create Button_11
+            app.Button_11 = uiradiobutton(app.ButtonGroup_2);
+            app.Button_11.Text = '红色';
+            app.Button_11.FontWeight = 'bold';
+            app.Button_11.Position = [11 60 46.46875 15];
+            app.Button_11.Value = true;
+
+            % Create Button_12
+            app.Button_12 = uiradiobutton(app.ButtonGroup_2);
+            app.Button_12.Text = '绿色';
+            app.Button_12.FontWeight = 'bold';
+            app.Button_12.Position = [11 38 46.46875 15];
+
+            % Create Button_13
+            app.Button_13 = uiradiobutton(app.ButtonGroup_2);
+            app.Button_13.Text = '蓝色';
+            app.Button_13.FontWeight = 'bold';
+            app.Button_13.Position = [11 16 46.46875 15];
+        end
+    end
+
+    methods (Access = public)
+
+        % Construct app
+        function app = HoughApp()
+
+            % Create and configure components
+            createComponents(app)
+
+            % Register the app with App Designer
+            registerApp(app, app.UIFigure)
+
+            if nargout == 0
+                clear app
+            end
+        end
+
+        % Code that executes before app deletion
+        function delete(app)
+
+            % Delete UIFigure when app is deleted
+            delete(app.UIFigure)
+        end
+    end
+end
